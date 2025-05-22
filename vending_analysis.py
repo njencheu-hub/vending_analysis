@@ -103,6 +103,14 @@ print(restock_df.info())
 print(inventory_df.head())
 print(restock_df.head())
 
+# Summary
+# We have:
+# Cleaned, de-duplicated data
+# Standard datetime types
+# Trimmed strings for accurate merges
+# Ready for aggregation, visualization, or joining across device_id
+
+# ////////////////////
 
 # 2). Exploratory Data Analysis (EDA): Conduct an initial analysis 
 # to understand the datasets characteristics, 
@@ -114,4 +122,8 @@ print(restock_df.head())
 
 # Summary statistics
 print(inventory_df.describe())
+# min package_qty = 1, max package_qty = 2, mean = 1, std = 0.022
+# min dispense_qty = 1, max dispense_qty = 162, mean = 8.15, std = 9.055
 print(restock_df.describe())
+# min total = 5, max total = 612, mean = 272.5, std = 101.077
+
