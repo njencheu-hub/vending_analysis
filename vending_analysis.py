@@ -102,3 +102,16 @@ print(inventory_df.info())
 print(restock_df.info())
 print(inventory_df.head())
 print(restock_df.head())
+
+
+# 2). Exploratory Data Analysis (EDA): Conduct an initial analysis 
+# to understand the datasets characteristics, 
+# including demand patterns, seasonality, and inventory levels.
+
+# Step-by-Step EDA
+
+# Step1: Basic Dataset Overview
+
+# Summary statistics
+print(inventory_df.describe())
+print(restock_df.describe())
