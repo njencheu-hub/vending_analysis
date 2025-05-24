@@ -6,12 +6,17 @@
 
 # Load data
 import pandas as pd
+import numpy as np
+
+import sweetviz as sv
+from ydata_profiling import ProfileReport
+
 inventory_df = pd.read_csv("Inventory_Turnover.csv")
 restock_df = pd.read_csv("Restock_data.csv")
 
 # Inspect data
 print(inventory_df.info())
-print(inventory_df.head())
+# print(inventory_df.head())
 
 print(restock_df.info())
 print(restock_df.head())
@@ -126,4 +131,31 @@ print(inventory_df.describe())
 # min dispense_qty = 1, max dispense_qty = 162, mean = 8.15, std = 9.055
 print(restock_df.describe())
 # min total = 5, max total = 612, mean = 272.5, std = 101.077
+
+
+# === Generate Sweetviz report for inventory_df ===
+# print("Generating Sweetviz report for inventory_df...")
+# inventory_report = sv.analyze(inventory_df)
+# inventory_report.show_html("inventory_sweetviz_report.html")
+
+# === Generate YData-Profiling report for inventory_df ===
+# Transform the DataFrame into a Profile Report
+# inventory_profile_report = ProfileReport(df=inventory_df, explorative=True, title='Inventory Analytics')
+# inventory_profile_report.to_file('inventory_profile_report.html')
+
+# import webbrowser
+# webbrowser.open("inventory_profile_report.html")
+
+# # === Generate Sweetviz report for restock_df ===
+# print("Generating Sweetviz report for restock_df...")
+# restock_report = sv.analyze(restock_df)
+# restock_report.show_html("restock_sweetviz_report.html")
+
+# === Generate YData-Profiling report for restock_df ===
+# Transform the DataFrame into a Profile Report
+restock_profile_report = ProfileReport(df=restock_df, explorative=True, title='Restock Analytics')
+restock_profile_report.to_file('restock_profile_report.html')
+
+import webbrowser
+webbrowser.open("restock_profile_report.html")
 
