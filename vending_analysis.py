@@ -269,4 +269,26 @@ plt.close()
 
 print(f"EDA visuals saved in: {os.path.abspath(output_dir)}")
 
+#///////////////////////
+#///////////////////////
 
+# 3)•Feature Engineering: 
+# Create new features that could be helpful for the model, 
+# such as time-based attributes (day of the week, month, etc.) or lag features.
+
+# A. Additional Time-Based Features (Inventory Dataset)
+
+inventory_df['year'] = inventory_df['dispense_date'].dt.year
+inventory_df['month_num'] = inventory_df['dispense_date'].dt.month
+inventory_df['day_of_week'] = inventory_df['dispense_date'].dt.dayofweek  # 0=Monday
+inventory_df['is_weekend'] = inventory_df['day_of_week'].isin([5, 6])  # Saturday or Sunday
+inventory_df['day_num'] = inventory_df['dispense_date'].dt.day # Monday = 0
+
+# Additional Time-Based Features (Restock Dataset)
+restock_df['year'] = restock_df['restock_date'].dt.year
+restock_df['month_num'] = restock_df['restock_date'].dt.month
+restock_df['day_of_week'] = restock_df['restock_date'].dt.dayofweek  # 0=Monday
+restock_df['is_weekend'] = restock_df['day_of_week'].isin([5, 6])  # Saturday or Sunday
+restock_df['day_num'] = restock_df['restock_date'].dt.day # Monday = 0
+
+# #### Why? Because these features help capture seasonality, demand cycles, and weekday effects.
