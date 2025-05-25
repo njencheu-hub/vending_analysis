@@ -276,6 +276,8 @@ print(f"EDA visuals saved in: {os.path.abspath(output_dir)}")
 # Create new features that could be helpful for the model, 
 # such as time-based attributes (day of the week, month, etc.) or lag features.
 
+# #### Why? Because these features help capture seasonality, demand cycles, and weekday effects.
+
 # A. Additional Time-Based Features (Inventory Dataset)
 
 inventory_df['year'] = inventory_df['dispense_date'].dt.year
@@ -284,11 +286,172 @@ inventory_df['day_of_week'] = inventory_df['dispense_date'].dt.dayofweek  # 0=Mo
 inventory_df['is_weekend'] = inventory_df['day_of_week'].isin([5, 6])  # Saturday or Sunday
 inventory_df['day_num'] = inventory_df['dispense_date'].dt.day # Monday = 0
 
-# Additional Time-Based Features (Restock Dataset)
-restock_df['year'] = restock_df['restock_date'].dt.year
-restock_df['month_num'] = restock_df['restock_date'].dt.month
-restock_df['day_of_week'] = restock_df['restock_date'].dt.dayofweek  # 0=Monday
-restock_df['is_weekend'] = restock_df['day_of_week'].isin([5, 6])  # Saturday or Sunday
-restock_df['day_num'] = restock_df['restock_date'].dt.day # Monday = 0
+# # Additional Time-Based Features (Restock Dataset)
+# restock_df['year'] = restock_df['restock_date'].dt.year
+# restock_df['month_num'] = restock_df['restock_date'].dt.month
+# restock_df['day_of_week'] = restock_df['restock_date'].dt.dayofweek  # 0=Monday
+# restock_df['is_weekend'] = restock_df['day_of_week'].isin([5, 6])  # Saturday or Sunday
+# restock_df['day_num'] = restock_df['restock_date'].dt.day # Monday = 0
 
-# #### Why? Because these features help capture seasonality, demand cycles, and weekday effects.
+# B. Lag Features (Qty Dispensed on Previous Days)
+
+# Sort by date and device
+# Ensures that the data is chronologically ordered per device, 
+# which is critical when creating lag and rolling features.
+inventory_df = inventory_df.sort_values(by=['device_id', 'dispense_date'])
+
+# Lag features per device
+# Why? These features help your model understand short-term demand memory and weekly cycles.
+inventory_df['lag_1'] = inventory_df.groupby('device_id')['qty_dispensed'].shift(1)
+inventory_df['lag_7'] = inventory_df.groupby('device_id')['qty_dispensed'].shift(7)  # same weekday last week
+inventory_df['rolling_7_mean'] = inventory_df.groupby('device_id')['qty_dispensed'].transform(lambda x: x.shift(1).rolling(7).mean())
+inventory_df['rolling_7_std'] = inventory_df.groupby('device_id')['qty_dispensed'].transform(lambda x: x.shift(1).rolling(7).std())
+# What the last 2 lines do:
+# Groups by device_id; For each device:
+# Shifts values by 1 (so today's value isn't included)
+# Calculates the rolling average and std over the previous 7 days
+
+# Summary Table:
+# Feature	               Purpose	                                 Method
+# lag_1	            Value from 1 day before	                    shift(1)
+# lag_7	            Value from 7 days before	                shift(7)
+# rolling_7_mean	Average of last 7 days (excluding today)	shift(1).rolling(7).mean()
+# rolling_7_std     Std of last 7 days (excluding today)	    shift(1).rolling(7).std()
+
+# B1. Cumulative Quantity Dispensed
+# Why? Helps identify overall usage and wear-out rates of machines.
+inventory_df['cumulative_dispense'] = inventory_df.groupby('device_id')['qty_dispensed'].cumsum()
+
+# B2. Days Since Last Dispense (Per Device)
+
+# Why? Indicates frequency of usage, irregularities, or gaps in demand.
+inventory_df['days_since_last'] = inventory_df.groupby('device_id')['dispense_date'].diff().dt.days
+
+# ******* C. Merge with Restock Data to Create Supply-Demand Features *****
+
+# Why? This reveals how long it’s been since a machine was 
+# last stocked — useful for identifying restock efficiency.
+
+# Merge nearest restock before dispense
+inventory_with_last = pd.merge_asof(
+    inventory_df.sort_values('dispense_date'),
+    restock_df[['device_id', 'restock_date']].sort_values('restock_date'),
+    by='device_id',
+    left_on='dispense_date',
+    right_on='restock_date',
+    direction='backward'
+)
+
+# Purpose: Matches each dispense event with the most recent restock event that happened on or before that dispense date.
+
+# Here's what's happening:
+# merge_asof() is like a "fuzzy join" that merges on nearest keys, not exact matches.
+# It:
+# Matches on device_id
+# Joins each dispense_date with the last restock_date before it (direction='backward')
+# Both DataFrames must be sorted by their respective datetime columns!
+
+# Example:
+
+# dispense_date	restock_date (matched)
+# 2024-01-05	2024-01-03
+# 2024-01-09	2024-01-08
+# 2024-01-15	2024-01-08
+
+# This way, we know which restock was still in effect before each dispense.
+
+# Days since last restock
+inventory_with_last['days_since_restock'] = (inventory_with_last['dispense_date'] - inventory_with_last['restock_date']).dt.days
+
+# Purpose: Measures how many days passed between the matched restock and the dispense date.
+
+# The .dt.days extracts just the integer number of days.
+# This new feature can help model inventory pressure, time-to-depletion, or restock efficiency.
+# Example:
+# dispense_date	restock_date	days_since_restock
+# 2024-01-05	2024-01-03	         2
+# 2024-01-09	2024-01-08	         1
+
+# Why this is valuable:
+# We can now analyze demand trends after a restock.
+# This feature (days_since_restock) can help detect:
+# How fast inventory depletes
+# How long restocks last
+# Seasonality in restocking needs
+
+# Days until next restock
+# We already calculated days_since_restock using a backward join. 
+# Now let’s calculate days_until_next_restock using a forward join with merge_asof.
+
+# Forward join: find the next restock after each dispense
+# Make sure both DataFrames are sorted
+inventory_df_sorted = inventory_with_last.sort_values('dispense_date')
+restock_df_sorted = restock_df[['device_id', 'restock_date']].sort_values('restock_date')
+
+# Perform merge_asof
+inventory_with_next = pd.merge_asof(
+    inventory_df_sorted,
+    restock_df_sorted,
+    by='device_id',
+    left_on='dispense_date',
+    right_on='restock_date',
+    direction='forward'
+)
+
+# # Debug step: Show columns to verify merge
+# print("🧾 Columns after forward merge:", inventory_with_next.columns.tolist())
+
+# Rename if restock_date was successfully added
+if 'restock_date_y' in inventory_with_next.columns:
+    inventory_with_next.rename(columns={'restock_date_x': 'last_restock_date', 'restock_date_y': 'next_restock_date'}, inplace=True)
+else:
+    raise KeyError("❌ 'restock_date_y' column not found after forward merge. Cannot rename to 'next_restock_date'.")
+
+# Calculate days until next restock
+inventory_with_next['days_until_next_restock'] = (
+    inventory_with_next['next_restock_date'] - inventory_with_next['dispense_date']
+).dt.days
+
+# ******* D. Visualize Dispense Trends vs. Restock *******
+# This can help us spot bottlenecks, predict depletion, and optimize scheduling.
+# Example Plot:
+
+# Choose a device to plot (or loop through a few)
+device = 'device_af645ebf4c96eb6e430529a2a9913686'  # Replace with actual ID from your dataset
+
+# Filter data
+device_data = inventory_with_next[inventory_with_next['device_id'] == device]
+
+# # Plot qty_dispensed over time
+# plt.figure(figsize=(12, 6))
+# plt.plot(device_data['dispense_date'], device_data['qty_dispensed'], label='Qty Dispensed')
+
+# # Mark restock events
+# plt.scatter(device_data['last_restock_date'], [0]*len(device_data), color='green', label='Last Restock', marker='^')
+# plt.scatter(device_data['next_restock_date'], [0]*len(device_data), color='red', label='Next Restock', marker='v')
+
+# plt.title(f'Device: {device} — Dispense & Restock Timeline')
+# plt.xlabel('Date')
+# plt.ylabel('Qty Dispensed')
+# plt.legend()
+# plt.tight_layout()
+
+max_y = device_data['qty_dispensed'].max()
+
+plt.figure(figsize=(12, 6))
+plt.plot(device_data['dispense_date'], device_data['qty_dispensed'], label='Qty Dispensed', color='blue')
+
+plt.scatter(device_data['last_restock_date'], [max_y * 1.05] * len(device_data), color='green', label='Last Restock', marker='^')
+plt.scatter(device_data['next_restock_date'], [max_y * 1.10] * len(device_data), color='red', label='Next Restock', marker='v')
+
+plt.title(f'Device: {device} — Dispense & Restock Timeline')
+plt.xlabel('Date')
+plt.ylabel('Qty Dispensed')
+plt.legend()
+plt.tight_layout()
+
+plt.savefig(os.path.join(output_dir, "device_13686_Dispense_and_Restock_Timeline.png"))
+plt.savefig(os.path.join(output_dir, "device_13686_Dispense_and_Restock_Timeline.pdf"))
+
+plt.show()
+
