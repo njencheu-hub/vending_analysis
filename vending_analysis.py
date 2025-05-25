@@ -11,6 +11,8 @@ import numpy as np
 import sweetviz as sv
 from ydata_profiling import ProfileReport
 
+import webbrowser
+
 inventory_df = pd.read_csv("Inventory_Turnover.csv")
 restock_df = pd.read_csv("Restock_data.csv")
 
@@ -121,17 +123,7 @@ print(restock_df.head())
 # to understand the datasets characteristics, 
 # including demand patterns, seasonality, and inventory levels.
 
-# Step-by-Step EDA
-
-# Step1: Basic Dataset Overview
-
-# Summary statistics
-print(inventory_df.describe())
-# min package_qty = 1, max package_qty = 2, mean = 1, std = 0.022
-# min dispense_qty = 1, max dispense_qty = 162, mean = 8.15, std = 9.055
-print(restock_df.describe())
-# min total = 5, max total = 612, mean = 272.5, std = 101.077
-
+#### EDA Using Sweetviz and YData-Profiling
 
 # === Generate Sweetviz report for inventory_df ===
 # print("Generating Sweetviz report for inventory_df...")
@@ -142,8 +134,6 @@ print(restock_df.describe())
 # Transform the DataFrame into a Profile Report
 # inventory_profile_report = ProfileReport(df=inventory_df, explorative=True, title='Inventory Analytics')
 # inventory_profile_report.to_file('inventory_profile_report.html')
-
-# import webbrowser
 # webbrowser.open("inventory_profile_report.html")
 
 # # === Generate Sweetviz report for restock_df ===
@@ -151,11 +141,132 @@ print(restock_df.describe())
 # restock_report = sv.analyze(restock_df)
 # restock_report.show_html("restock_sweetviz_report.html")
 
-# === Generate YData-Profiling report for restock_df ===
-# Transform the DataFrame into a Profile Report
-restock_profile_report = ProfileReport(df=restock_df, explorative=True, title='Restock Analytics')
-restock_profile_report.to_file('restock_profile_report.html')
+# # === Generate YData-Profiling report for restock_df ===
+# # Transform the DataFrame into a Profile Report
+# restock_profile_report = ProfileReport(df=restock_df, explorative=True, title='Restock Analytics')
+# restock_profile_report.to_file('restock_profile_report.html')
+# webbrowser.open("restock_profile_report.html")
 
-import webbrowser
-webbrowser.open("restock_profile_report.html")
+# -------------
+# -------------
+
+# Step-by-Step EDA
+# Let's walk through a detailed EDA) of the datasets, focusing on:
+# A. Demand patterns (how much is dispensed over time)
+# B. Seasonality (trends across months/days)
+# C. Inventory levels (what's available vs. restocked)
+
+# Step1: Import additional libraries
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Step2: Summary statistics
+# Look for: Date ranges, Outliers in qty_dispense or package_qty
+print(inventory_df.describe())
+# min package_qty = 1, max package_qty = 2, mean = 1, std = 0.022
+# min dispense_qty = 1, max dispense_qty = 162, mean = 8.15, std = 9.055
+print(restock_df.describe())
+# min total = 5, max total = 612, mean = 272.5, std = 101.077
+
+# Step 3: Generate plots for demand patterns, seasonality, and inventory levels.
+
+# Create output directory if it doesn't exist
+import os
+
+# Set up plot saving
+output_dir = "plots"
+os.makedirs(output_dir, exist_ok=True)
+
+# 1. DAILY DEMAND PATTERN
+daily_demand = inventory_df.groupby('dispense_date')['qty_dispensed'].sum()
+
+plt.figure(figsize=(14, 5))
+daily_demand.plot()
+plt.title("Daily Total Quantity Dispensed")
+plt.ylabel("Quantity")
+plt.xlabel("Date")
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, "daily_quantity_dispensed.png"))
+plt.savefig(os.path.join(output_dir, "daily_quantity_dispensed.pdf"))
+plt.close()
+
+# 2. DEMAND BY DAY OF WEEK
+
+dow_demand = inventory_df.groupby('day')['qty_dispensed'].sum().reindex(
+    ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+)
+
+plt.figure(figsize=(10, 6))
+# sns.barplot(x=dow_demand.index, y=dow_demand.values, palette="viridis")
+sns.barplot(x=dow_demand.index, y=dow_demand.values, color="skyblue")
+plt.title("Total Quantity Dispensed by Day of Week")
+plt.ylabel("Quantity")
+plt.xlabel("Day of Week")
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, "demand_by_day_of_week.png"))
+plt.savefig(os.path.join(output_dir, "demand_by_day_of_week.pdf"))
+plt.close()
+
+# 3. DEMAND BY WEEK OF YEAR
+woy_demand = inventory_df.groupby('week')['qty_dispensed'].sum()
+woy_demand.plot()
+plt.title("Total Quantity Dispensed by Week of Year")
+plt.ylabel("Quantity")
+plt.xlabel("Week of Year")
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, "weekly_quantity_dispensed.png"))
+plt.savefig(os.path.join(output_dir, "weekly_quantity_dispensed.pdf"))
+plt.close()
+
+# 4. DEMAND BY MONTH OF YEAR
+monthly_demand = inventory_df.groupby('month')['qty_dispensed'].sum()
+monthly_demand.plot()
+plt.title("Total Quantity Dispensed Monthly")
+plt.ylabel("Quantity")
+plt.xlabel("Month of Year")
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, "monthly_quantity_dispensed.png"))
+plt.savefig(os.path.join(output_dir, "monthly_quantity_dispensed.pdf"))
+plt.close()
+
+# 5. DISPENSES OVER TIME PER DEVICE
+device_demand = inventory_df.groupby(['dispense_date', 'device_id'])['qty_dispensed'].sum().unstack().fillna(0)
+
+plt.figure(figsize=(14, 6))
+device_demand.plot(legend=False)
+plt.title("Daily Dispense Volume per Device (Trend)")
+plt.ylabel("Quantity")
+plt.xlabel("Date")
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, "device_dispense_trend.png"))
+plt.savefig(os.path.join(output_dir, "device_dispense_trend.pdf"))
+plt.close()
+
+# 6. RESTOCKS OVER TIME
+restock_counts = restock_df.groupby('restock_date').size()
+
+plt.figure(figsize=(14, 5))
+restock_counts.plot(kind='bar')
+plt.title("Restock Frequency Over Time")
+plt.ylabel("Restock Events")
+plt.xlabel("Date")
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, "restock_frequency.png"))
+plt.savefig(os.path.join(output_dir, "restock_frequency.pdf"))
+plt.close()
+
+# 7. PACKAGE VS DISPENSED DISTRIBUTION
+plt.figure(figsize=(10, 6))
+sns.histplot(inventory_df['package_qty'], label='Package Qty', color='skyblue', kde=True)
+sns.histplot(inventory_df['qty_dispensed'], label='Qty Dispensed', color='orange', kde=True)
+plt.title("Distribution: Package Quantity vs. Dispensed Quantity")
+plt.legend()
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, "package_vs_dispensed_distribution.png"))
+plt.savefig(os.path.join(output_dir, "package_vs_dispensed_distribution.pdf"))
+plt.close()
+
+print(f"EDA visuals saved in: {os.path.abspath(output_dir)}")
+
 
