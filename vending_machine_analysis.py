@@ -1051,3 +1051,439 @@ plt.savefig(os.path.join(output_dir, "device_utilization_avg_per_day.png"))
 # Low total + low avg	      Possibly poor placement or irrelevant SKUs
 # Low total but high avg	  Rarely used but intense demand on certain days
 # High total but low avg	  Frequently used, but lightly each day
+
+# -----------------------------------------------------
+
+# ******* TSA *********
+
+# A. STATIONARITY: Checking for stationarity in using merged_df, particularly with the 7-day rolling mean and std *****
+
+# To do so, we can proceed in two ways
+
+# 1. Visual Inspection (Rolling Statistics)
+# Plot the original series (qty_dispensed), rolling mean, and rolling standard deviation 
+# for a few SKUs to visually assess stationarity.
+
+# Example: Visual stationarity check per SKU
+# Select a sample SKU with enough data
+sample_sku = merged_df['sku'].value_counts().idxmax()  # or use a specific one
+sku_data = merged_df[(merged_df['sku'] == sample_sku) & 
+    (merged_df['qty_dispensed'] < 50)].sort_values('dispense_date')
+# where qty_dispensed is under 50, helping to avoid a outlier
+
+# Plotting
+plt.figure(figsize=(12, 6))
+plt.plot(sku_data['dispense_date'], sku_data['qty_dispensed'], label='Original', alpha=0.5)
+plt.plot(sku_data['dispense_date'], sku_data['rolling_7'], label='Rolling Mean (7)', color='red')
+plt.plot(sku_data['dispense_date'], sku_data['rolling_std_7'], label='Rolling Std (7)', color='green')
+plt.title(f'Stationarity Check for SKU: {sample_sku}')
+plt.xlabel("Date")
+plt.ylabel("Quantity Dispensed")
+plt.legend()
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, f"stationarity_check_{sample_sku}.png"))
+
+# Interpretation:
+# If the mean and standard deviation lines are flat, the series is likely stationary.
+# If they change over time (trend or variance shifts), the series is non-stationary.
+
+# 2. Statistical Test: Augmented Dickey-Fuller (ADF) Test
+# This test gives a formal answer on stationarity.
+
+from statsmodels.tsa.stattools import adfuller
+
+# Fill or drop missing values before testing
+sku_data_clean = sku_data[['dispense_date', 'qty_dispensed']].dropna()
+
+# Perform ADF test
+adf_result = adfuller(sku_data_clean['qty_dispensed'])
+
+# print("ADF Statistic:", result[0])
+# print("p-value:", result[1])
+# for key, value in result[4].items():
+#     print(f"Critical Value {key}: {value}")
+
+# Prepare results as a DataFrame
+adf_data = {
+    'Metric': [
+        'ADF Statistic',
+        'p-value',
+        'Number of Lags Used',
+        'Number of Observations Used',
+        'Critical Value (1%)',
+        'Critical Value (5%)',
+        'Critical Value (10%)'
+    ],
+    'Value': [
+        adf_result[0],
+        adf_result[1],
+        adf_result[2],
+        adf_result[3],
+        adf_result[4]['1%'],
+        adf_result[4]['5%'],
+        adf_result[4]['10%']
+    ]
+}
+
+adf_df = pd.DataFrame(adf_data)
+
+# Define output file path
+adf_excel_path = os.path.join(output_dir, f"adf_test_results_{sample_sku}.xlsx")
+
+# Save to Excel
+adf_df.to_excel(adf_excel_path, index=False)
+
+# print(f"ADF test results saved as Excel to: {adf_excel_path}")
+
+# Interpretation:
+# p-value < 0.05 → likely stationary
+# p-value ≥ 0.05 → likely non-stationary
+
+# ADF Statistic: -2.911787332149284
+# p-value: 0.043994361093326745
+# Critical Value 1%: -3.439503230053971
+# Critical Value 5%: -2.8655794463678346
+# Critical Value 10%: -2.5689210707289982
+
+# ADF Statistic: -2.9118
+# This is the test statistic. The more negative it is, the stronger the rejection 
+# of the null hypothesis (which states the series is non-stationary).
+
+# p-value: 0.044
+# This is the probability of observing the test result under the null hypothesis. A common threshold is 0.05.
+# Since p-value < 0.05, you can reject the null hypothesis at the 5% level, meaning the series is likely stationary.
+
+# Critical Values:
+# Significance Level	Critical Value	ADF Statistic vs Critical
+# 1%	-3.4395	-2.9118 > -3.4395 → Not significant at 1%
+# 5%	-2.8656	-2.9118 < -2.8656 → Significant at 5%
+# 10%	-2.5689	-2.9118 < -2.5689 → Significant at 10%
+
+# Conclusion:
+# We reject the null hypothesis at both the 5% and 10% significance levels.
+# This suggests that the series is stationary, though not strongly enough to be certain at the strict 1% level.
+# Since our p-value is around 0.044, it's borderline — so it’s a weak stationarity result.
+
+# Recommendation:
+# Consider looking at rolling statistics plots to visually validate (done)
+# Optionally, we apply differencing or transformation (e.g., log) if we want 
+# stronger stationarity for forecasting models like ARIMA.
+
+# Apply First Differencing
+# This transformation removes trend and helps make the series stationary.
+
+# Filter to the same SKU and restrict qty_dispensed < 50
+sample_sku = merged_df['sku'].value_counts().idxmax()
+sku_data = merged_df[(merged_df['sku'] == sample_sku) & (merged_df['qty_dispensed'] < 50)].sort_values('dispense_date')
+
+# First order differencing
+sku_data['diff_qty'] = sku_data['qty_dispensed'].diff()
+
+# Drop NaNs caused by differencing
+sku_data.dropna(subset=['diff_qty'], inplace=True)
+
+# Re-Plot Differenced Series
+plt.figure(figsize=(12, 6))
+plt.plot(sku_data['dispense_date'], sku_data['diff_qty'], label='Differenced Qty', color='purple', alpha=0.7)
+plt.title(f'Differenced Series for SKU: {sample_sku}')
+plt.xlabel("Date")
+plt.ylabel("Δ Quantity Dispensed")
+plt.legend()
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, f"diff_series_stationarity_{sample_sku}.png"))
+
+# Re-run ADF Test on the differenced quantity
+adf_diff_result = adfuller(sku_data['diff_qty'])
+
+# Prepare results as a DataFrame
+adf_diff_data = {
+    'Metric': [
+        'ADF Statistic',
+        'p-value',
+        'Number of Lags Used',
+        'Number of Observations Used',
+        'Critical Value (1%)',
+        'Critical Value (5%)',
+        'Critical Value (10%)'
+    ],
+    'Value': [
+        adf_diff_result[0],
+        adf_diff_result[1],
+        adf_diff_result[2],
+        adf_diff_result[3],
+        adf_diff_result[4]['1%'],
+        adf_diff_result[4]['5%'],
+        adf_diff_result[4]['10%']
+    ]
+}
+
+adf_diff_df = pd.DataFrame(adf_diff_data)
+
+# Define output file path
+adf_diff_excel_path = os.path.join(output_dir, f"adf_diff_test_results_{sample_sku}.xlsx")
+
+# Save to Excel
+adf_diff_df.to_excel(adf_diff_excel_path, index=False)
+
+
+# ---------------------------
+
+# # B. AUTOCORRELATION:
+# # To analyze autocorrelation in merged_df using the existing lag_1, lag_3, and lag_7 columns, 
+# # we can compare how well previous values of qty_dispensed (at different lags) correlate with the current value.
+
+# # Step-by-Step: Autocorrelation Check with Lag Columns
+
+# # Filter relevant columns for autocorrelation check
+# autocorr_df = merged_df[['qty_dispensed', 'lag_1', 'lag_3', 'lag_7']].dropna()
+
+# # Calculate correlations
+# autocorr_corr = autocorr_df.corr()
+
+# # Save correlation matrix to Excel
+# autocorr_path = os.path.join(output_dir, "autocorrelation_lag_correlation.xlsx")
+# autocorr_corr.to_excel(autocorr_path)
+
+# # Plot heatmap of correlations
+# plt.figure(figsize=(8, 6))
+# sns.heatmap(autocorr_corr, annot=True, fmt=".2f", cmap="coolwarm", cbar=True)
+# plt.title("Autocorrelation Matrix: qty_dispensed vs Lag Features")
+# plt.tight_layout()
+
+# # Save plot
+# autocorr_plot_path = os.path.join(output_dir, "autocorrelation_heatmap.png")
+# plt.savefig(autocorr_plot_path)
+
+# Interpretation:
+# Strong positive correlation between qty_dispensed and lag_1 → strong short-term autocorrelation.
+# Weaker or fluctuating values for lag_3 or lag_7 → insights into weekly or mid-range patterns.
+
+# Interpretation of Key Correlations
+# Lag Feature	Correlation with qty_dispensed	        Interpretation
+# lag_1	  0.81	Very strong short-term autocorrelation — today's quantity is highly predictive from yesterday's.
+# lag_3	  0.77	Strong medium-term correlation (3-day lag) — demand persists across multiple days.
+# lag_7	  0.83	Strong weekly pattern — suggests weekly cycles in demand (e.g., similar behavior same day last week).
+
+# Interpretation Summary:
+# All lag correlations are above 0.75, suggesting strong autocorrelation in the series.
+# The highest is lag_7 (0.83) — this often indicates a weekly cycle, which is consistent with typical 
+# work/rest consumption patterns in vending machine use.
+# This strong autocorrelation supports the use of time series models like:
+# ARIMA/SARIMA (accounts for lag structure & seasonality),
+# Prophet (seasonality modeling),
+# LSTM (deep learning with sequences).
+
+# ---------------------------
+
+# C. TREND DECOMPOSITION: To perform trend decomposition on your merged_df data 
+# — specifically to decompose qty_dispensed into trend, seasonality, and residual components 
+# — we can use statsmodels.tsa.seasonal_decompose.
+
+# Preconditions:
+# Your data must be time-series (i.e., sorted and indexed by dispense_date).
+# Data should ideally be regularly spaced (daily, weekly, etc.). 
+# If there are missing dates, we'll need to resample and fill them.
+
+# Step-by-Step: Decompose Time Series
+
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+# Step 1: Choose a sample SKU (or filter first)
+sample_sku = merged_df['sku'].value_counts().idxmax()
+sku_data = merged_df[(merged_df['sku'] == sample_sku) & (merged_df['qty_dispensed'] < 50)].copy()
+
+# Step 2: Ensure proper datetime index
+sku_data['dispense_date'] = pd.to_datetime(sku_data['dispense_date'])
+sku_data = sku_data.set_index('dispense_date').sort_index()
+
+# Step 3: Resample daily (or weekly) and fill gaps
+ts = sku_data['qty_dispensed'].resample('D').sum().fillna(0)
+
+# Step 4: Decompose (use period=7 for weekly seasonality)
+result = seasonal_decompose(ts, model='additive', period=7)
+
+# Step 5: Plot and save
+fig = result.plot()
+fig.set_size_inches(12, 8)
+plt.suptitle(f"Trend Decomposition for SKU: {sample_sku}", fontsize=16)
+plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+# Save to file
+output_path = os.path.join(output_dir, f"trend_decomposition_{sample_sku}.png")
+plt.savefig(output_path)
+
+# Explanation of Components:
+# Trend: Long-term increase or decrease in the data.
+# Seasonal: Repeating patterns at fixed frequency (e.g., weekly).
+# Residual: What's left after removing trend and seasonality (noise or unexplained variation).
+
+#  Step-by-Step: Plot Components Separately
+
+# Step 1: Select and prepare sample SKU data
+sample_sku = merged_df['sku'].value_counts().idxmax()
+sku_data = merged_df[(merged_df['sku'] == sample_sku) & (merged_df['qty_dispensed'] < 50)].copy()
+sku_data['dispense_date'] = pd.to_datetime(sku_data['dispense_date'])
+sku_data = sku_data.set_index('dispense_date').sort_index()
+
+# Step 2: Resample and fill missing dates
+ts = sku_data['qty_dispensed'].resample('D').sum().fillna(0)
+
+# Step 3: Decompose time series
+result = seasonal_decompose(ts, model='additive', period=7)
+
+# Step 4: Plot each component separately
+fig, axes = plt.subplots(4, 1, figsize=(14, 10), sharex=True)
+components = ['observed', 'trend', 'seasonal', 'resid']
+titles = ['Original Time Series', 'Trend Component', 'Seasonal Component', 'Residual Component']
+colors = ['black', 'red', 'blue', 'gray']
+
+for ax, comp, title, color in zip(axes, components, titles, colors):
+    ax.plot(getattr(result, comp), color=color)
+    ax.set_title(title)
+    ax.grid(True)
+
+axes[-1].set_xlabel('Date')
+plt.tight_layout()
+plt.suptitle(f"Decomposed Components for SKU: {sample_sku}", fontsize=16, y=1.02)
+
+# Step 5: Save figure
+output_path = os.path.join(output_dir, f"decomposed_components_{sample_sku}.png")
+plt.savefig(output_path, bbox_inches='tight')
+
+# ----------------------------------
+
+# D. FORECASTING: We will fit an ARIMA model and use it for forecasting using our merged_df dataset, 
+# specifically on the qty_dispensed time series per SKU.
+
+# Step-by-Step: ARIMA Forecasting on merged_df
+# We'll:
+# Choose a sample SKU.
+# Resample the data to daily frequency.
+# Fit an ARIMA model.
+# Forecast future values.
+# Plot the result.
+# Save the output.
+
+from statsmodels.tsa.arima.model import ARIMA
+from pmdarima.arima import auto_arima #(pip install statsmodels pmdarima)
+
+# Ensure dispense_date is datetime
+merged_df['dispense_date'] = pd.to_datetime(merged_df['dispense_date'])
+
+# Step 1: Choose a sample SKU with sufficient data
+sample_sku = merged_df['sku'].value_counts().idxmax()
+sku_df = merged_df[(merged_df['sku'] == sample_sku) & (merged_df['qty_dispensed'] < 50)].copy()
+sku_df['dispense_date'] = pd.to_datetime(sku_df['dispense_date'])
+sku_df.set_index('dispense_date', inplace=True)
+
+# Step 2: Aggregate qty_dispensed by day
+ts = sku_data.groupby('dispense_date')['qty_dispensed'].sum()
+
+# Convert to daily frequency and fill missing days
+ts = ts.asfreq('D').fillna(0)  # or .fillna(method='ffill') depending on context
+
+# Step 3: Auto ARIMA to find the best (p,d,q)
+stepwise_model = auto_arima(ts,
+                            start_p=1, start_q=1,
+                            max_p=3, max_q=3,
+                            seasonal=False,
+                            trace=True,
+                            error_action='ignore',
+                            suppress_warnings=True,
+                            stepwise=True)
+
+# Step 4: Fit ARIMA model
+model = ARIMA(ts, order=stepwise_model.order)
+model_fit = model.fit()
+
+# Step 5: Forecasting
+n_forecast = 30 #forecast for the next 30 day
+forecast = model_fit.forecast(steps=n_forecast)
+
+# Step 6: Plot original + forecast
+plt.figure(figsize=(14, 6))
+plt.plot(ts.index, ts, label='Observed')
+plt.plot(pd.date_range(ts.index[-1], periods=n_forecast + 1, freq='D')[1:], forecast, label='Forecast', color='red')
+plt.title(f"ARIMA Forecast for SKU: {sample_sku}")
+plt.xlabel("Date")
+plt.ylabel("Qty Dispensed")
+plt.legend()
+plt.grid(True)
+
+# Save to output_dir
+forecast_plot_path = os.path.join(output_dir, f"arima_forecast_{sample_sku}.png")
+plt.tight_layout()
+plt.savefig(forecast_plot_path)
+
+
+# To calculate the Root Mean Squared Error (RMSE) for the ARIMA forecast, we’ll need to:
+# Split the time series into train/test sets.
+# Fit the model on the training set.
+# Forecast the same number of periods as in the test set.
+# Compute RMSE using sklearn.metrics.mean_squared_error
+
+from sklearn.metrics import mean_squared_error
+
+# Set up output list
+rmse_results = []
+
+# Ensure dispense_date is datetime
+merged_df['dispense_date'] = pd.to_datetime(merged_df['dispense_date'])
+
+# Select top N SKUs by volume
+top_skus = merged_df['sku'].value_counts().head(5).index.tolist()
+
+# Loop through each top SKU
+for sku in top_skus:
+    sku_data = merged_df[(merged_df['sku'] == sample_sku) & (merged_df['qty_dispensed'] < 50)].sort_values('dispense_date')
+
+    # Aggregate qty_dispensed by day
+    ts = sku_data.groupby('dispense_date')['qty_dispensed'].sum()
+
+    # Convert to daily frequency and fill missing days
+    ts = ts.asfreq('D').fillna(0)  # or .fillna(method='ffill') depending on context
+
+    if len(ts) < 20:
+        continue  # Skip SKUs with too little data
+
+    # Train/test split
+    train_size = int(len(ts) * 0.8)
+    train, test = ts[:train_size], ts[train_size:]
+
+    try:
+        # Fit ARIMA model
+        stepwise_model = auto_arima(train,
+                                    start_p=1, start_q=1,
+                                    max_p=3, max_q=3,
+                                    seasonal=False,
+                                    trace=False,
+                                    error_action='ignore',
+                                    suppress_warnings=True,
+                                    stepwise=True)
+
+        model = ARIMA(train, order=stepwise_model.order)
+        model_fit = model.fit()
+
+        # Forecast
+        forecast = model_fit.forecast(steps=len(test))
+
+        # Compute RMSE
+        rmse = np.sqrt(mean_squared_error(test, forecast))
+
+        # Append to results
+        rmse_results.append({
+            'sku': sku,
+            'order': stepwise_model.order,
+            'rmse': round(rmse, 2)
+        })
+
+    except Exception as e:
+        print(f"ARIMA failed for SKU {sku}: {e}")
+
+# Create DataFrame and save to Excel
+rmse_df = pd.DataFrame(rmse_results)
+excel_path = os.path.join(output_dir, "arima_rmse_by_sku.xlsx")
+rmse_df.to_excel(excel_path, index=False)
+
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
