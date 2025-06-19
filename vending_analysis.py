@@ -13,8 +13,8 @@ from ydata_profiling import ProfileReport
 
 import webbrowser
 
-inventory_df = pd.read_csv("Inventory_Turnover.csv")
-restock_df = pd.read_csv("Restock_data.csv")
+inventory_df = pd.read_csv("/data/Inventory_Turnover.csv")
+restock_df = pd.read_csv("/data/Restock_data.csv")
 
 # Inspect data
 print(inventory_df.info())

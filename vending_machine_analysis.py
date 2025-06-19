@@ -1484,6 +1484,3 @@ for sku in top_skus:
 rmse_df = pd.DataFrame(rmse_results)
 excel_path = os.path.join(output_dir, "arima_rmse_by_sku.xlsx")
 rmse_df.to_excel(excel_path, index=False)
-
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
