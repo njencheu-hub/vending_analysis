@@ -1,11 +1,26 @@
 # Vending Machine Inventory Turnover & Restocking Analytics
 
-This project provides an end-to-end data analysis pipeline for vending machine inventory and restocking data. It includes cleaning, exploratory data analysis (EDA), feature engineering, supply-demand timeline visualization, and reporting for decision support in inventory optimization.
+This end-to-end Python project analyzes vending machine inventory and restocking data to uncover trends, optimize supply timelines, and support predictive inventory planning. It combines cleaning, feature engineering, EDA, and supply-demand visualization to inform restocking decisions.
+
+---
+
+## Table of Contents
+
+- [Project Overview](#project-overview)
+- [Real-World Use Cases](#real-world-use-cases)
+- [Dataset Description](#dataset-description)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Visual Outputs](#visualization-outputs)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
 ##  Project Overview
 
+**Objectives:**
 The main objectives of this analysis are:
 
 - Clean and preprocess inventory and restock data
@@ -13,6 +28,18 @@ The main objectives of this analysis are:
 - Engineer features for forecasting or ML modeling
 - Visualize dispense vs. restock timelines
 - Reveal insights into device usage and supply efficiency
+
+---
+
+## Real-World Use Cases
+
+This project can support:
+
+- **Inventory optimization** for vending machine businesses
+- **Forecasting models** for demand planning
+- **Supply chain analytics** in Fast-Moving Consumer Goods (FMCG) or automated retail
+- **IoT device management** insights using time-series trends
+- **KPI reporting** for product usage and restocking cadence
 
 ---
 
@@ -66,6 +93,22 @@ The main objectives of this analysis are:
   - `days_since_restock`
   - `days_until_next_restock`
 
+---
+
+## Installation
+
+Install required packages:
+
+pip install -r requirements.txt
+
+---
+
+## Usage
+
+Run the core pipeline with:
+
+python vending_machine_analysis.py
+
 ### Visualization Outputs
 
 All plots are saved under the `/plots` directory. Examples:
@@ -81,3 +124,23 @@ All plots are saved under the `/plots` directory. Examples:
 ![Dispense and Restock Timeline](plots/device_13686_Dispense_and_Restock_Timeline.png)
 
 ---
+
+## Contributing
+We welcome community contributions!
+
+1. Fork the repository
+
+2. Create a new branch:
+
+git checkout -b feature/your-feature
+
+3. Make your changes
+
+4. Push to your branch:
+
+git push origin feature/your-feature
+
+5. Submit a Pull Request
+
+## License
+This project is licensed under the MIT License.
